@@ -95,16 +95,20 @@ jobs:
 
       - name: Test
         run: |
-          function Write-LogErrors {
-            param([string]$Path)
-            Get-Content $Path | Select-String -Pattern "Failed|failed|FAILED|Error|error" | Select-Object -Last 40 | ForEach-Object {
-              $line = $_.Line.Trim()
-              if ($line) { Write-Output "::error::$line" }
-            }
-          }
           ctest --test-dir build -C Release --output-on-failure 2>&1 | Tee-Object -FilePath test.log
           $code = $LASTEXITCODE
-          if ($code -ne 0) { Write-LogErrors test.log; exit $code }
+          if ($code -ne 0) {
+            Get-Content test.log | Select-String -Pattern "FAIL!|QFATAL|Loc: |Actual|Expected|Received|tst_.*Failed|Test #[0-9]" |
+              Select-Object -First 10 | ForEach-Object {
+                $line = $_.Line.Trim()
+                if ($line) { Write-Output "::error::$line" }
+              }
+            Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "## Windows test failures"
+            Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value '```'
+            Get-Content test.log | Add-Content -Path $env:GITHUB_STEP_SUMMARY
+            Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value '```'
+            exit $code
+          }
 
       - name: Package
         run: |
