@@ -43,6 +43,23 @@ Or open `MxUSlides.xcodeproj` in Xcode after `xcodegen generate` and run the `Mx
 
 Dependency versions are pinned in the checked-in `Package.resolved` files for `LocalAPI`, `StreamEngine`, and `ProImport`. XcodeGen combines those pins into the app's generated lockfile, including SwiftProtobuf only when the ProPresenter sources are present. Re-run `xcodegen generate` after generating or removing those sources; when switching configurations, also clear SwiftPM's manifest cache as described above and clean the build. Every app build verifies the generated lock against the package pins, and the commands above and the release script disable automatic dependency updates. For an intentional dependency update, update the affected package's lockfile, regenerate the project, and test both the package and app.
 
+## Windows app (Qt 6.12)
+
+`apps/windows` is an experimental native Windows port built with C++20 and Qt 6.12 Widgets. It edits and saves the same `.mxuslides` bundles as the macOS app, with an editor, presenter page, program output, stage display, timer, local library, and image/text/shape rendering. Capture devices, NDI, DeckLink, streaming, and the Local API are not implemented yet; see [apps/windows/README.md](apps/windows/README.md) for the exact scope.
+
+Requirements: Windows 10 or 11 x64, Visual Studio 2022 with the Desktop C++ workload, CMake 3.24+, and the Qt 6.12 MSVC 2022 64-bit kit.
+
+```powershell
+cd apps/windows
+$env:QT_ROOT = "C:\Qt\6.12.0\msvc2022_64"
+cmake --preset windows-release
+cmake --build --preset windows-release
+ctest --preset windows-release
+.\scripts\package-windows.ps1
+```
+
+The packaging script runs `windeployqt`, writes a self-contained folder and zip under `apps/windows/dist`, and needs no installer framework. The port is usable for editing and presenting an existing library, but it has not reached feature parity with the macOS app.
+
 ## Building and testing
 
 Each package builds and tests on its own with SwiftPM. None of them needs the NDI SDK (`NDIKit` builds a stub without it):

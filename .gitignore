@@ -20,3 +20,6 @@ dist/
 
 # Release build output (apps/mac/scripts/release-dmg.sh)
 apps/mac/build/
+
+# Windows CMake build output
+apps/windows/build/
