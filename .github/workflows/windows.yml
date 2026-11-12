@@ -124,7 +124,7 @@ jobs:
         run: |
           $exe = Get-ChildItem build -Recurse -Filter tst_presentation_file.exe | Select-Object -First 1
           if (-not $exe) { Write-Output "::error::tst_presentation_file.exe was not built"; exit 1 }
-          $env:QT_QPA_PLATFORM = "offscreen"
+          $env:QT_QPA_PLATFORM = "windows"
           $report = "diag-presentation.txt"
           & $exe.FullName -v1 -o "$report,txt" 2>&1 | Tee-Object -FilePath diag-presentation.log
           $code = $LASTEXITCODE
@@ -148,7 +148,7 @@ jobs:
         run: |
           $exe = Get-ChildItem build -Recurse -Filter tst_library.exe | Select-Object -First 1
           if (-not $exe) { Write-Output "::error::tst_library.exe was not built"; exit 1 }
-          $env:QT_QPA_PLATFORM = "offscreen"
+          $env:QT_QPA_PLATFORM = "windows"
           $report = "diag-library.txt"
           & $exe.FullName -v1 -o "$report,txt" 2>&1 | Tee-Object -FilePath diag-library.log
           $code = $LASTEXITCODE
@@ -172,7 +172,7 @@ jobs:
         run: |
           $exe = Get-ChildItem build -Recurse -Filter tst_renderer.exe | Select-Object -First 1
           if (-not $exe) { Write-Output "::error::tst_renderer.exe was not built"; exit 1 }
-          $env:QT_QPA_PLATFORM = "offscreen"
+          $env:QT_QPA_PLATFORM = "windows"
           $report = "diag-renderer.txt"
           & $exe.FullName -v1 -o "$report,txt" 2>&1 | Tee-Object -FilePath diag-renderer.log
           $code = $LASTEXITCODE

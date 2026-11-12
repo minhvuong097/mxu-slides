@@ -152,14 +152,19 @@ bool PresentationFile::write(const Bundle &bundle, const QString &path, QString 
         return false;
     }
 
-    QTemporaryFile temporary(destination.absolutePath() + QStringLiteral("/.mxu-XXXXXX"));
-    temporary.setAutoRemove(false);
-    if (!temporary.open()) {
-        setError(error, QStringLiteral("Could not create a temporary file for the export."));
-        return false;
+    QString stagingPath;
+    {
+        QTemporaryFile temporary(destination.absolutePath() + QStringLiteral("/.mxu-XXXXXX"));
+        temporary.setAutoRemove(false);
+        if (!temporary.open()) {
+            setError(error, QStringLiteral("Could not create a temporary file for the export."));
+            return false;
+        }
+        stagingPath = temporary.fileName();
+        temporary.close();
     }
-    const QString stagingPath = temporary.fileName();
-    temporary.close();
+    // Destroy the QTemporaryFile before renaming: on Windows it can keep the
+    // staging file handle open, which makes QFile::rename fail.
 
     MZ_FILE *zipFile = openArchiveFile(stagingPath, true);
     if (!zipFile) {
