@@ -98,10 +98,19 @@ jobs:
           ctest --test-dir build -C Release --output-on-failure 2>&1 | Tee-Object -FilePath test.log
           $code = $LASTEXITCODE
           if ($code -ne 0) {
-            $details = Get-Content test.log | Select-String -Pattern "FAIL!|QFATAL|Loc: |Actual|Expected|Received|QWARN"
-            if (-not $details) {
-              Write-Output "::error::ctest failed without QTest detail lines; showing the start of test.log"
-              $details = Get-Content test.log | Select-Object -First 20
+            $details = @(Get-Content test.log | Select-String -Pattern "FAIL!|QFATAL|Loc: |Actual|Expected|Received|QWARN")
+            if ($details.Count -eq 0) {
+              Write-Output "::error::ctest failed without QTest detail lines; showing output after the first failed test"
+              $all = @(Get-Content test.log)
+              $failed = 0
+              for ($i = 0; $i -lt $all.Count; ++$i) {
+                if ($all[$i] -match '\*\*\*Failed') { $failed = $i; break }
+              }
+              $start = [Math]::Max(0, $failed - 1)
+              $end = [Math]::Min($start + 19, $all.Count - 1)
+              if ($all.Count -gt 0) {
+                $details = @($all[$start..$end] | ForEach-Object { [pscustomobject]@{ Line = $_ } })
+              }
             }
             $details | Select-Object -First 10 | ForEach-Object {
               $line = $_.Line.Trim()
@@ -109,6 +118,39 @@ jobs:
             }
             exit $code
           }
+
+      - name: Diagnose tst_presentation_file
+        if: failure()
+        run: |
+          $exe = Get-ChildItem build -Recurse -Filter tst_presentation_file.exe | Select-Object -First 1
+          if (-not $exe) { Write-Output "::error::tst_presentation_file.exe was not built"; exit 1 }
+          $env:QT_QPA_PLATFORM = "offscreen"
+          & $exe.FullName -v1 2>&1 | Tee-Object -FilePath diag-presentation.log
+          $code = $LASTEXITCODE
+          Write-Output "::error::$($exe.Name) direct exit code: $code"
+          Get-Content diag-presentation.log | Select-Object -First 15 | ForEach-Object { Write-Output "::error::$_" }
+
+      - name: Diagnose tst_library
+        if: failure()
+        run: |
+          $exe = Get-ChildItem build -Recurse -Filter tst_library.exe | Select-Object -First 1
+          if (-not $exe) { Write-Output "::error::tst_library.exe was not built"; exit 1 }
+          $env:QT_QPA_PLATFORM = "offscreen"
+          & $exe.FullName -v1 2>&1 | Tee-Object -FilePath diag-library.log
+          $code = $LASTEXITCODE
+          Write-Output "::error::$($exe.Name) direct exit code: $code"
+          Get-Content diag-library.log | Select-Object -First 15 | ForEach-Object { Write-Output "::error::$_" }
+
+      - name: Diagnose tst_renderer
+        if: failure()
+        run: |
+          $exe = Get-ChildItem build -Recurse -Filter tst_renderer.exe | Select-Object -First 1
+          if (-not $exe) { Write-Output "::error::tst_renderer.exe was not built"; exit 1 }
+          $env:QT_QPA_PLATFORM = "offscreen"
+          & $exe.FullName -v1 2>&1 | Tee-Object -FilePath diag-renderer.log
+          $code = $LASTEXITCODE
+          Write-Output "::error::$($exe.Name) direct exit code: $code"
+          Get-Content diag-renderer.log | Select-Object -First 15 | ForEach-Object { Write-Output "::error::$_" }
 
       - name: Package
         run: |
