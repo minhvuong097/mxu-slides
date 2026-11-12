@@ -11,6 +11,9 @@ on:
       - ".github/workflows/windows.yml"
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   build:
     name: Build and test (Windows x64)
@@ -20,20 +23,42 @@ jobs:
         shell: pwsh
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Python for Qt installer
         uses: actions/setup-python@v6
         with:
-          python-version: "3.13"
+          python-version: "3.12"
 
+      # aqtinstall 3.3.0 does not understand Qt 6.12's repository layout.
+      # Pin the upstream commit that installs qt6_6120_msvc2022_64 correctly.
       - name: Install Qt 6.12
-        uses: jurplel/install-qt-action@v4
-        with:
-          version: "6.12.0"
-          arch: win64_msvc2022_64
-          cache: true
-          setup-python: "false"
+        run: |
+          $ErrorActionPreference = "Stop"
+          function Write-LogErrors {
+            param([string]$Path, [string]$Pattern = "error|Error|ERROR|failed|FAILED|fatal")
+            if (-not (Test-Path $Path)) { return }
+            Get-Content $Path | Select-String -Pattern $Pattern | Select-Object -Last 30 | ForEach-Object {
+              $line = $_.Line.Trim()
+              if ($line) { Write-Output "::error::$line" }
+            }
+          }
+
+          $qtBase = Join-Path $env:RUNNER_WORKSPACE "Qt"
+          $qtRoot = Join-Path $qtBase "6.12.0\msvc2022_64"
+          python -m pip install --disable-pip-version-check "git+https://github.com/miurahr/aqtinstall.git@5a49f2b391ae8ee1d3c0dd87f8b33c1d49a4deb7" 2>&1 | Tee-Object -FilePath pip-install.log
+          $code = $LASTEXITCODE
+          if ($code -ne 0) { Write-LogErrors pip-install.log; exit $code }
+
+          python -m aqt install-qt windows desktop 6.12.0 win64_msvc2022_64 --outputdir $qtBase --archives qtbase qttools 2>&1 | Tee-Object -FilePath qt-install.log
+          $code = $LASTEXITCODE
+          if ($code -ne 0) { Write-LogErrors qt-install.log; exit $code }
+          if (-not (Test-Path (Join-Path $qtRoot "bin\windeployqt.exe"))) {
+            Write-Output "::error::Qt installation completed without bin\windeployqt.exe at $qtRoot"
+            exit 1
+          }
+          "QT_ROOT_DIR=$qtRoot" >> $env:GITHUB_ENV
+          Join-Path $qtRoot "bin" >> $env:GITHUB_PATH
 
       - name: Set up MSVC
         uses: ilammy/msvc-dev-cmd@v1
@@ -41,18 +66,58 @@ jobs:
           arch: x64
 
       - name: Configure
-        run: >
-          cmake -S apps/windows -B build -G "Visual Studio 17 2022" -A x64
-          -DCMAKE_PREFIX_PATH="$env:QT_ROOT_DIR" -DMXU_CORE_ONLY=OFF -DBUILD_TESTING=ON
+        run: |
+          function Write-LogErrors {
+            param([string]$Path)
+            Get-Content $Path | Select-String -Pattern "CMake Error|error|Error" | Select-Object -Last 25 | ForEach-Object {
+              $line = $_.Line.Trim()
+              if ($line) { Write-Output "::error::$line" }
+            }
+          }
+          cmake -S apps/windows -B build -G "Visual Studio 17 2022" -A x64 `
+            -DCMAKE_PREFIX_PATH="$env:QT_ROOT_DIR" -DMXU_CORE_ONLY=OFF -DBUILD_TESTING=ON 2>&1 |
+            Tee-Object -FilePath configure.log
+          $code = $LASTEXITCODE
+          if ($code -ne 0) { Write-LogErrors configure.log; exit $code }
 
       - name: Build
-        run: cmake --build build --config Release --parallel
+        run: |
+          function Write-LogErrors {
+            param([string]$Path)
+            Get-Content $Path | Select-String -Pattern "error [A-Z]+[0-9]+|fatal error|FAILED:|error:" | Select-Object -Last 30 | ForEach-Object {
+              $line = $_.Line.Trim()
+              if ($line) { Write-Output "::error::$line" }
+            }
+          }
+          cmake --build build --config Release --parallel 2>&1 | Tee-Object -FilePath build.log
+          $code = $LASTEXITCODE
+          if ($code -ne 0) { Write-LogErrors build.log; exit $code }
 
       - name: Test
-        run: ctest --test-dir build -C Release --output-on-failure
+        run: |
+          function Write-LogErrors {
+            param([string]$Path)
+            Get-Content $Path | Select-String -Pattern "Failed|failed|FAILED|Error|error" | Select-Object -Last 40 | ForEach-Object {
+              $line = $_.Line.Trim()
+              if ($line) { Write-Output "::error::$line" }
+            }
+          }
+          ctest --test-dir build -C Release --output-on-failure 2>&1 | Tee-Object -FilePath test.log
+          $code = $LASTEXITCODE
+          if ($code -ne 0) { Write-LogErrors test.log; exit $code }
 
       - name: Package
-        run: ./apps/windows/scripts/package-windows.ps1 -QtRoot "$env:QT_ROOT_DIR" -BuildDir build -SkipTests
+        run: |
+          function Write-LogErrors {
+            param([string]$Path)
+            Get-Content $Path | Select-String -Pattern "error|Error|ERROR|failed|FAILED" | Select-Object -Last 25 | ForEach-Object {
+              $line = $_.Line.Trim()
+              if ($line) { Write-Output "::error::$line" }
+            }
+          }
+          ./apps/windows/scripts/package-windows.ps1 -QtRoot "$env:QT_ROOT_DIR" -BuildDir build -SkipTests 2>&1 | Tee-Object -FilePath package.log
+          $code = $LASTEXITCODE
+          if ($code -ne 0) { Write-LogErrors package.log; exit $code }
 
       - name: Upload package
         uses: actions/upload-artifact@v4
