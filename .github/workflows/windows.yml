@@ -22,12 +22,18 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Set up Python for Qt installer
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
       - name: Install Qt 6.12
         uses: jurplel/install-qt-action@v4
         with:
           version: "6.12.0"
           arch: win64_msvc2022_64
           cache: true
+          setup-python: "false"
 
       - name: Set up MSVC
         uses: ilammy/msvc-dev-cmd@v1
